@@ -3,7 +3,11 @@
 // Spec Hash: 0fe43335f5a325e3279a079ce616c052
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const VERSION = '1.0.1';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json');
+
+export const VERSION = pkg.version;
 export const SPEC_HASH = '0fe43335f5a325e3279a079ce616c052';
 
 // ─────────────────────────────────────────────────────────────────────────────
