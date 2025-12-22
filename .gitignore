@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+*.log
+.env
+coverage/
+dist/
+
+# Docs site (separate repo)
+docs-site/

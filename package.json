@@ -1,0 +1,48 @@
+{
+  "name": "@nclamvn/vibecode-cli",
+  "version": "1.8.0",
+  "description": "Build software with discipline - AI coding with guardrails",
+  "main": "src/index.js",
+  "type": "module",
+  "bin": {
+    "vibecode": "./bin/vibecode.js"
+  },
+  "scripts": {
+    "start": "node bin/vibecode.js",
+    "lint": "eslint src/",
+    "test": "node src/ui/__tests__/error-translator.test.js",
+    "test:errors": "node src/ui/__tests__/error-translator.test.js",
+    "test:errors:verbose": "node src/ui/__tests__/error-translator.test.js --verbose"
+  },
+  "keywords": [
+    "cli",
+    "ai",
+    "coding",
+    "claude",
+    "vibecode",
+    "development",
+    "workflow"
+  ],
+  "author": "Lâm",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "boxen": "^7.1.1",
+    "chalk": "^5.3.0",
+    "chokidar": "^5.0.0",
+    "commander": "^12.0.0",
+    "fs-extra": "^11.2.0",
+    "inquirer": "^9.2.12",
+    "ora": "^8.0.1",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/vibecode-cli"
+  }
+}

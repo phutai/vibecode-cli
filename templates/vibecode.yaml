@@ -1,0 +1,15 @@
+# Vibecode CLI Configuration
+version: "1.0"
+created: "[timestamp]"
+
+project:
+  name: "[project_name]"
+  type: "auto"
+
+settings:
+  enforcement: "strict"
+  auto_backup: true
+  audit_log: true
+
+provider:
+  default: "claude-code"
