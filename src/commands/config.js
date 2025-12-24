@@ -48,22 +48,29 @@ function getDefaultConfig() {
       timeout: 30 // minutes
     },
     autoEvidence: true,
-    verbose: false
+    verbose: false,
+    notifications: true // Desktop notifications
   };
 }
 
 export async function configCommand(options = {}) {
   try {
     // Check workspace for set operations
-    if (options.provider || options.set) {
+    if (options.provider || options.notifications !== undefined) {
       if (!await workspaceExists()) {
         printError('No Vibecode workspace found. Run `vibecode init` first.');
         process.exit(1);
       }
     }
 
+    // Set notifications
+    if (options.notifications !== undefined) {
+      await setNotifications(options.notifications);
+      return;
+    }
+
     // Show current config
-    if (options.show || (!options.provider && !options.set)) {
+    if (options.show || (!options.provider)) {
       await showConfig();
       return;
     }
@@ -105,7 +112,8 @@ Provider: ${config.provider}
 Flags: ${config.claudeCode?.flags?.join(', ') || 'none'}
 Timeout: ${config.claudeCode?.timeout || 30} minutes
 Auto Evidence: ${config.autoEvidence ? 'enabled' : 'disabled'}
-Verbose: ${config.verbose ? 'enabled' : 'disabled'}`;
+Verbose: ${config.verbose ? 'enabled' : 'disabled'}
+Notifications: ${config.notifications !== false ? 'enabled' : 'disabled'}`;
 
   printBox(content, { borderColor: 'cyan' });
 
@@ -146,4 +154,34 @@ async function setProvider(providerName) {
 
   printSuccess(`Provider set to: ${providerName}`);
   console.log(chalk.gray(`Config saved to: ${getConfigPath()}`));
+}
+
+/**
+ * Set notifications on/off
+ */
+async function setNotifications(value) {
+  const enabled = value === 'on' || value === true || value === 'true';
+
+  const config = await loadConfig();
+  config.notifications = enabled;
+  await saveConfig(config);
+
+  if (enabled) {
+    printSuccess('Desktop notifications enabled');
+  } else {
+    printSuccess('Desktop notifications disabled');
+  }
+  console.log(chalk.gray(`Config saved to: ${getConfigPath()}`));
+}
+
+/**
+ * Get notifications setting from config
+ */
+export async function getNotificationsSetting() {
+  try {
+    const config = await loadConfig();
+    return config.notifications !== false;
+  } catch {
+    return true; // Default to enabled
+  }
 }

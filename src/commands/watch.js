@@ -10,6 +10,7 @@ import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs/promises';
 import readline from 'readline';
+import { notify as sendNotification, notifyError, notifySuccess } from '../utils/notifications.js';
 
 const execAsync = promisify(exec);
 
@@ -123,9 +124,9 @@ export async function watchCommand(options) {
 
     // Notify if enabled
     if (options.notify && state.errors.length > 0) {
-      notify('Vibecode Watch', `${state.errors.length} errors found`);
+      notifyError(`${state.errors.length} errors found`, 'Watch Mode');
     } else if (options.notify && state.errors.length === 0) {
-      notify('Vibecode Watch', 'All checks passed!');
+      notifySuccess('All checks passed!', 'Watch Mode');
     }
 
     state.running = false;
@@ -533,24 +534,6 @@ function setupKeyboardShortcuts(state, checks, cwd, watchDirs, watcher, runCheck
       renderUI(state, watchDirs, checks);
     }
   });
-}
-
-/**
- * Send desktop notification
- */
-function notify(title, message) {
-  const platform = process.platform;
-
-  try {
-    if (platform === 'darwin') {
-      exec(`osascript -e 'display notification "${message}" with title "${title}"'`);
-    } else if (platform === 'linux') {
-      exec(`notify-send "${title}" "${message}"`);
-    }
-    // Windows would need different approach (powershell or node-notifier)
-  } catch {
-    // Silently fail - notifications are optional
-  }
 }
 
 export default watchCommand;

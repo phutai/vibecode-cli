@@ -17,7 +17,7 @@ export { reviewCommand } from './commands/review.js';
 export { snapshotCommand } from './commands/snapshot.js';
 
 // Phase C Commands
-export { configCommand } from './commands/config.js';
+export { configCommand, getNotificationsSetting } from './commands/config.js';
 
 // Phase E Commands - Magic Mode
 export { goCommand } from './commands/go.js';
@@ -57,6 +57,43 @@ export { refactorCommand } from './commands/refactor.js';
 export { securityCommand } from './commands/security.js';
 export { askCommand } from './commands/ask.js';
 export { migrateCommand } from './commands/migrate.js';
+
+// Phase M Commands - Templates & Preview
+export { templatesCommand } from './commands/templates.js';
+export {
+  TEMPLATES,
+  getTemplate,
+  getTemplatesByCategory,
+  getCategories,
+  searchTemplates,
+  getCategoryIcon,
+  getTemplateIds,
+  isValidTemplate
+} from './templates/index.js';
+
+export { previewCommand, autoPreview } from './commands/preview.js';
+export { imagesCommand, autoGenerateImages } from './commands/images.js';
+export { deployCommand, autoDeploy } from './commands/deploy.js';
+export { feedbackCommand, startFeedbackMode } from './commands/feedback.js';
+export { voiceCommand } from './commands/voice.js';
+
+// Phase M8 Commands - History & Favorites
+export { historyCommand } from './commands/history.js';
+export { favoriteCommand } from './commands/favorite.js';
+export {
+  addToHistory,
+  loadHistory,
+  clearHistory,
+  searchHistory,
+  getHistoryItem,
+  loadFavorites,
+  addFavorite,
+  removeFavorite,
+  getFavorite,
+  searchFavorites,
+  exportFavorites,
+  importFavorites
+} from './utils/history.js';
 
 // UI exports (Phase H2: Dashboard)
 export {
@@ -113,3 +150,26 @@ export { VERSION, SPEC_HASH, STATES } from './config/constants.js';
 
 // Providers
 export { PROVIDERS, getProvider, getDefaultProvider } from './providers/index.js';
+
+// Notifications (Phase M7)
+export {
+  notify,
+  notifyBuildComplete,
+  notifyDeployComplete,
+  notifyWatchChange,
+  notifyTestComplete,
+  notifyError,
+  notifySuccess,
+  notifyAgentProgress,
+  isNotificationSupported
+} from './utils/notifications.js';
+
+// Image Service exports (Phase M3)
+export {
+  ImageService,
+  createImageService,
+  searchImages,
+  generateImages,
+  getCuratedCollection,
+  CURATED_COLLECTIONS
+} from './services/image-service.js';

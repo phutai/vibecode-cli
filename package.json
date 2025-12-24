@@ -1,6 +1,6 @@
 {
   "name": "@nclamvn/vibecode-cli",
-  "version": "1.8.1",
+  "version": "2.6.0",
   "description": "Build software with discipline - AI coding with guardrails",
   "main": "src/index.js",
   "type": "module",
@@ -35,7 +35,9 @@
     "commander": "^12.0.0",
     "fs-extra": "^11.2.0",
     "inquirer": "^9.2.12",
+    "open": "^11.0.0",
     "ora": "^8.0.1",
+    "qrcode": "^1.5.4",
     "yaml": "^2.3.4"
   },
   "devDependencies": {

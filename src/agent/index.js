@@ -11,7 +11,13 @@ import fs from 'fs-extra';
 import { DecompositionEngine, createDecompositionEngine } from './decomposition.js';
 import { MemoryEngine, createMemoryEngine } from './memory.js';
 import { SelfHealingEngine, createSelfHealingEngine } from './self-healing.js';
-import { Orchestrator, createOrchestrator, ORCHESTRATOR_STATES } from './orchestrator.js';
+import {
+  Orchestrator,
+  createOrchestrator,
+  ORCHESTRATOR_STATES,
+  loadProgress,
+  loadDecomposition
+} from './orchestrator.js';
 
 /**
  * Vibecode Agent Class
@@ -214,6 +220,64 @@ export class VibecodeAgent {
   }
 
   /**
+   * Resume a previously interrupted build
+   */
+  async resume(options = {}) {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    // Load progress to show header
+    const progress = await loadProgress(this.projectPath);
+    if (!progress) {
+      console.log(chalk.yellow('\n📭 No previous session found.\n'));
+      console.log(chalk.gray('   Start new build: vibecode agent "description" --new\n'));
+      return null;
+    }
+
+    this.showResumeHeader(progress, options);
+
+    try {
+      this.buildResult = await this.orchestrator.resumeBuild(options);
+      this.showResults(this.buildResult);
+      return this.buildResult;
+    } catch (error) {
+      console.error(chalk.red(`\nAgent resume failed: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Show resume header
+   */
+  showResumeHeader(progress, options) {
+    const fromModule = options.fromModule !== undefined
+      ? options.fromModule + 1
+      : progress.currentModule + 1;
+    const totalModules = progress.totalModules;
+    const completed = progress.completedModules?.length || progress.currentModule || 0;
+
+    console.log();
+    console.log(chalk.cyan('╭' + '─'.repeat(68) + '╮'));
+    console.log(chalk.cyan('│') + ' '.repeat(68) + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + chalk.bold.white('   🔄 RESUMING AGENT') + ' '.repeat(48) + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + ' '.repeat(68) + chalk.cyan('│'));
+
+    const projectLine = `   Project: ${progress.projectName}`;
+    console.log(chalk.cyan('│') + chalk.white(projectLine) + ' '.repeat(Math.max(0, 66 - projectLine.length)) + chalk.cyan('│'));
+
+    const progressLine = `   Progress: ${completed}/${totalModules} modules completed`;
+    console.log(chalk.cyan('│') + chalk.white(progressLine) + ' '.repeat(Math.max(0, 66 - progressLine.length)) + chalk.cyan('│'));
+
+    const resumeLine = `   Resuming from module ${fromModule}`;
+    console.log(chalk.cyan('│') + chalk.yellow(resumeLine) + ' '.repeat(Math.max(0, 66 - resumeLine.length)) + chalk.cyan('│'));
+
+    console.log(chalk.cyan('│') + ' '.repeat(68) + chalk.cyan('│'));
+    console.log(chalk.cyan('╰' + '─'.repeat(68) + '╯'));
+    console.log();
+  }
+
+  /**
    * Quick build helper
    */
   static async quickBuild(description, options = {}) {
@@ -321,5 +385,7 @@ export {
   createSelfHealingEngine,
   Orchestrator,
   createOrchestrator,
-  ORCHESTRATOR_STATES
+  ORCHESTRATOR_STATES,
+  loadProgress,
+  loadDecomposition
 };

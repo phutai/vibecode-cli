@@ -33,6 +33,16 @@ import {
   securityCommand,
   askCommand,
   migrateCommand,
+  // Phase M Commands
+  templatesCommand,
+  previewCommand,
+  imagesCommand,
+  deployCommand,
+  feedbackCommand,
+  voiceCommand,
+  // Phase M8 Commands
+  historyCommand,
+  favoriteCommand,
   VERSION
 } from '../src/index.js';
 
@@ -126,6 +136,7 @@ program
   .description('Manage Vibecode configuration')
   .option('--show', 'Show current configuration')
   .option('--provider <name>', 'Set default AI provider')
+  .option('--notifications <on|off>', 'Enable/disable desktop notifications')
   .action(configCommand);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,25 +144,138 @@ program
 // ─────────────────────────────────────────────────────────────────────────────
 
 program
-  .command('go <description>')
+  .command('go [description...]')
   .description('Magic mode: one command, full automated build')
-  .option('-t, --template <name>', 'Use template (landing, saas, cli, api)')
+  .option('-t, --template <id>', 'Use a template (run "vibecode templates" to see list)')
+  .option('--name <name>', 'Project/Company name')
+  .option('--color <color>', 'Primary brand color (hex)')
   .option('-i, --iterate', 'Enable iterative build mode')
   .option('-m, --max <n>', 'Max iterations for iterative mode', parseInt)
-  .option('-o, --open', 'Auto-open result when done')
-  .action(goCommand);
+  .option('-o, --open', 'Auto-open folder when done')
+  .option('-p, --preview', 'Start dev server and open browser after build')
+  .option('--port <port>', 'Preview port number', '3000')
+  .option('--qr', 'Show QR code for mobile preview')
+  .option('--with-images', 'Generate professional images for the project')
+  .option('--deploy', 'Auto-deploy after build (to Vercel)')
+  .option('--deploy-platform <platform>', 'Deploy platform: vercel, netlify', 'vercel')
+  .option('-f, --feedback', 'Enter interactive feedback mode after build')
+  .option('--notify', 'Desktop notifications on completion')
+  .action((description, options) => {
+    const desc = Array.isArray(description) ? description.join(' ') : description;
+    goCommand(desc, options);
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase M Commands - Templates
+// ─────────────────────────────────────────────────────────────────────────────
+
+program
+  .command('templates')
+  .alias('tpl')
+  .description('Browse and use project templates')
+  .option('-l, --list', 'List all templates')
+  .option('-i, --info <id>', 'Show template details')
+  .option('-s, --search <query>', 'Search templates')
+  .option('-p, --preview <id>', 'Preview template in browser')
+  .option('-q, --quiet', 'Non-interactive mode')
+  .action(templatesCommand);
+
+program
+  .command('preview')
+  .description('Start dev server and open in browser')
+  .option('-p, --port <port>', 'Port number', '3000')
+  .option('-q, --qr', 'Show QR code for mobile')
+  .option('-s, --stop', 'Stop running preview server')
+  .option('--no-open', 'Do not open browser')
+  .option('-d, --detach', 'Run in background')
+  .action(previewCommand);
+
+program
+  .command('images [query...]')
+  .alias('img')
+  .description('AI-powered image generation for projects')
+  .option('-s, --search <query>', 'Search for images')
+  .option('-g, --generate', 'Generate full image set')
+  .option('--hero', 'Generate hero image only')
+  .option('--products <count>', 'Generate product images')
+  .option('--replace', 'Replace placeholder images in project')
+  .option('-l, --list', 'List generated images')
+  .option('-t, --theme <theme>', 'Image theme: tech, business, creative, nature')
+  .option('-c, --count <n>', 'Number of images to fetch', '8')
+  .action((query, options) => {
+    const q = Array.isArray(query) ? query.join(' ') : query;
+    imagesCommand(q, options);
+  });
+
+program
+  .command('deploy')
+  .description('Deploy project to cloud platforms (Vercel, Netlify, etc.)')
+  .option('--vercel', 'Deploy to Vercel (recommended)')
+  .option('--netlify', 'Deploy to Netlify')
+  .option('--github-pages', 'Deploy to GitHub Pages')
+  .option('--railway', 'Deploy to Railway')
+  .option('-p, --preview', 'Create preview deployment (not production)')
+  .option('-d, --domain <domain>', 'Custom domain for deployment')
+  .option('-s, --status', 'Show current deployment status')
+  .option('--history', 'Show deployment history')
+  .option('--notify', 'Desktop notification on completion')
+  .action(deployCommand);
+
+program
+  .command('feedback')
+  .alias('fb')
+  .description('Interactive feedback mode for incremental changes')
+  .option('-p, --preview', 'Auto-start preview server')
+  .option('--port <port>', 'Preview port number', '3000')
+  .action(feedbackCommand);
+
+program
+  .command('voice [subcommand]')
+  .description('Voice-controlled commands - hands-free coding')
+  .option('-a, --auto', 'Auto-execute recognized commands')
+  .option('-t, --timeout <seconds>', 'Recording timeout in seconds', '10')
+  .option('--whisper', 'Use OpenAI Whisper for transcription')
+  .option('--macos', 'Use macOS dictation')
+  .option('--text', 'Use text input only')
+  .action(voiceCommand);
+
+program
+  .command('history')
+  .description('📜 View and manage command history')
+  .option('-l, --limit <n>', 'Number of items to show', '20')
+  .option('-s, --search <query>', 'Search history')
+  .option('-r, --run <n>', 'Re-run command by index')
+  .option('-c, --clear', 'Clear all history')
+  .option('--stats', 'Show history statistics')
+  .action(historyCommand);
+
+program
+  .command('favorite [action] [args...]')
+  .alias('fav')
+  .description('⭐ Manage favorite prompts')
+  .option('-n, --name <name>', 'Favorite name')
+  .option('-t, --template <id>', 'Use template')
+  .option('--tags <tags>', 'Comma-separated tags')
+  .option('-y, --yes', 'Skip confirmation')
+  .option('--replace', 'Replace all on import')
+  .option('--preview', 'Add --preview flag to command')
+  .option('--deploy', 'Add --deploy flag to command')
+  .option('--notify', 'Add --notify flag to command')
+  .action(favoriteCommand);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase F Commands - Agent Mode
 // ─────────────────────────────────────────────────────────────────────────────
 
 program
-  .command('agent <description>')
+  .command('agent [description...]')
   .description('Agent mode: autonomous multi-module builder with self-healing')
   .option('-n, --new', 'Create new project directory')
+  .option('-r, --resume', 'Resume from last stopped module')
+  .option('--from <n>', 'Resume from specific module number', parseInt)
+  .option('-s, --status', 'Show current agent progress')
   .option('-v, --verbose', 'Show detailed progress')
   .option('--analyze', 'Analyze project structure without building')
-  .option('--status', 'Show agent status and memory stats')
   .option('--report', 'Export memory report to markdown')
   .option('--clear', 'Clear agent memory')
   .option('--force', 'Force operation (for --clear)')
@@ -160,7 +284,11 @@ program
   .option('--skip-tests', 'Skip tests after each module')
   .option('--continue', 'Continue on module failure')
   .option('--stdout', 'Output report to stdout (for --report)')
-  .action(agentCommand);
+  .action((description, options) => {
+    // Join variadic description
+    const desc = Array.isArray(description) ? description.join(' ') : description;
+    agentCommand(desc, options);
+  });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase G Commands - Debug Mode

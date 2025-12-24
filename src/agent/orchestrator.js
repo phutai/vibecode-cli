@@ -16,6 +16,67 @@ import { translateError, showError, inlineError } from '../ui/error-translator.j
 import { BackupManager } from '../core/backup.js';
 
 /**
+ * Progress file for resume functionality
+ */
+const PROGRESS_FILE = '.vibecode/agent-progress.json';
+const DECOMPOSITION_FILE = '.vibecode/agent-decomposition.json';
+
+/**
+ * Save agent progress to file
+ */
+export async function saveProgress(projectPath, progress) {
+  const progressPath = path.join(projectPath, PROGRESS_FILE);
+  await fs.ensureDir(path.dirname(progressPath));
+  await fs.writeFile(progressPath, JSON.stringify(progress, null, 2));
+}
+
+/**
+ * Load agent progress from file
+ */
+export async function loadProgress(projectPath) {
+  try {
+    const progressPath = path.join(projectPath, PROGRESS_FILE);
+    const content = await fs.readFile(progressPath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clear agent progress file
+ */
+export async function clearProgress(projectPath) {
+  try {
+    await fs.unlink(path.join(projectPath, PROGRESS_FILE));
+  } catch {
+    // Ignore if file doesn't exist
+  }
+}
+
+/**
+ * Save decomposition for resume
+ */
+export async function saveDecomposition(projectPath, decomposition) {
+  const decompositionPath = path.join(projectPath, DECOMPOSITION_FILE);
+  await fs.ensureDir(path.dirname(decompositionPath));
+  await fs.writeFile(decompositionPath, JSON.stringify(decomposition, null, 2));
+}
+
+/**
+ * Load decomposition from file
+ */
+export async function loadDecomposition(projectPath) {
+  try {
+    const decompositionPath = path.join(projectPath, DECOMPOSITION_FILE);
+    const content = await fs.readFile(decompositionPath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Orchestrator states
  */
 const ORCHESTRATOR_STATES = {
@@ -186,6 +247,13 @@ export class Orchestrator {
 
       const decomposition = await this.decompositionEngine.decompose(description, options);
 
+      // Save decomposition for resume functionality
+      await saveDecomposition(this.projectPath, {
+        ...decomposition,
+        description,
+        startedAt: new Date().toISOString()
+      });
+
       // Store in memory
       if (this.memoryEngine) {
         await this.memoryEngine.setProjectContext({
@@ -201,11 +269,13 @@ export class Orchestrator {
       // Step 2: Build modules in order
       this.setState(ORCHESTRATOR_STATES.BUILDING);
 
-      const results = await this.buildModules(decomposition);
+      const results = await this.buildModules(decomposition, options);
 
       // Step 3: Final summary
       if (results.success) {
         this.setState(ORCHESTRATOR_STATES.COMPLETED);
+        // Clear progress on success
+        await clearProgress(this.projectPath);
       } else {
         this.setState(ORCHESTRATOR_STATES.FAILED);
       }
@@ -220,39 +290,147 @@ export class Orchestrator {
   }
 
   /**
+   * Resume build from previous progress
+   */
+  async resumeBuild(options = {}) {
+    this.buildState.startTime = Date.now();
+
+    // Load progress
+    const progress = await loadProgress(this.projectPath);
+    if (!progress) {
+      throw new Error('No previous progress found. Start a new build with: vibecode agent "description"');
+    }
+
+    // Load decomposition
+    const savedDecomposition = await loadDecomposition(this.projectPath);
+    if (!savedDecomposition) {
+      throw new Error('No decomposition found. Start a new build with: vibecode agent "description"');
+    }
+
+    try {
+      // Restore decomposition engine state
+      await this.decompositionEngine.decompose(savedDecomposition.description, options);
+
+      // Update module statuses from progress
+      for (const mod of progress.modules) {
+        if (mod.status === 'done') {
+          this.decompositionEngine.updateModuleStatus(mod.id, 'completed', {
+            files: mod.files || []
+          });
+          this.buildState.completedModules.push(mod.id);
+        }
+      }
+
+      // Store in memory
+      if (this.memoryEngine) {
+        await this.memoryEngine.setProjectContext({
+          description: progress.description,
+          type: savedDecomposition.projectType,
+          complexity: savedDecomposition.estimatedComplexity,
+          totalModules: savedDecomposition.totalModules
+        });
+      }
+
+      await this.log(`Resuming from module ${progress.currentModule + 1}`);
+
+      // Determine start index
+      const startIndex = options.fromModule !== undefined
+        ? options.fromModule
+        : progress.currentModule;
+
+      // Build remaining modules
+      this.setState(ORCHESTRATOR_STATES.BUILDING);
+      const results = await this.buildModules(savedDecomposition, {
+        ...options,
+        startIndex
+      });
+
+      // Final summary
+      if (results.success) {
+        this.setState(ORCHESTRATOR_STATES.COMPLETED);
+        await clearProgress(this.projectPath);
+      } else {
+        this.setState(ORCHESTRATOR_STATES.FAILED);
+      }
+
+      return this.generateBuildReport(savedDecomposition, results);
+
+    } catch (error) {
+      this.setState(ORCHESTRATOR_STATES.FAILED);
+      await this.log(`Resume failed: ${error.message}`, 'error');
+      throw error;
+    }
+  }
+
+  /**
    * Build all modules in dependency order
    */
-  async buildModules(decomposition) {
+  async buildModules(decomposition, options = {}) {
     const results = {
       success: true,
       modules: {},
       totalTime: 0
     };
 
+    // Determine start index for resume
+    const startIndex = options.startIndex || 0;
+    const buildOrder = decomposition.buildOrder;
+
     // Create and start dashboard if enabled
     if (this.config.useDashboard) {
       this.dashboard = new ProgressDashboard({
-        title: 'VIBECODE AGENT',
+        title: startIndex > 0 ? 'VIBECODE AGENT (RESUME)' : 'VIBECODE AGENT',
         projectName: path.basename(this.projectPath),
         mode: `Agent (${decomposition.totalModules} modules)`
       });
 
-      // Set modules for dashboard
-      this.dashboard.setModules(decomposition.buildOrder.map(id => {
+      // Set modules for dashboard with correct status for resumed builds
+      this.dashboard.setModules(buildOrder.map((id, idx) => {
         const mod = this.decompositionEngine.getModule(id);
-        return { name: mod?.name || id };
+        return {
+          name: mod?.name || id,
+          status: idx < startIndex ? 'completed' : 'pending'
+        };
       }));
 
       this.dashboard.start();
+
+      // Show resume message
+      if (startIndex > 0) {
+        this.dashboard.addLog(`Resuming from module ${startIndex + 1}: ${buildOrder[startIndex]}`);
+      }
     }
 
     try {
-      for (const moduleId of decomposition.buildOrder) {
+      for (let i = startIndex; i < buildOrder.length; i++) {
+        const moduleId = buildOrder[i];
+
         // Check if we should stop
         if (this.state === ORCHESTRATOR_STATES.PAUSED) {
           await this.log('Build paused');
           break;
         }
+
+        // Save progress before building this module
+        await saveProgress(this.projectPath, {
+          projectName: path.basename(this.projectPath),
+          description: decomposition.description,
+          totalModules: decomposition.totalModules,
+          completedModules: this.buildState.completedModules,
+          currentModule: i,
+          modules: buildOrder.map((id, idx) => {
+            const mod = this.decompositionEngine.getModule(id);
+            return {
+              id,
+              name: mod?.name || id,
+              status: idx < i ? 'done' : idx === i ? 'building' : 'pending',
+              files: mod?.files || []
+            };
+          }),
+          startedAt: decomposition.startedAt || new Date().toISOString(),
+          lastUpdated: new Date().toISOString(),
+          error: null
+        });
 
         // Check if module can be built (dependencies satisfied)
         if (!this.decompositionEngine.canBuildModule(moduleId)) {
@@ -295,11 +473,37 @@ export class Orchestrator {
           }
         }
 
+        // Save progress after module completion
+        await saveProgress(this.projectPath, {
+          projectName: path.basename(this.projectPath),
+          description: decomposition.description,
+          totalModules: decomposition.totalModules,
+          completedModules: this.buildState.completedModules,
+          currentModule: moduleResult.success ? i + 1 : i,
+          failedModule: moduleResult.success ? null : i,
+          modules: buildOrder.map((id, idx) => {
+            const mod = this.decompositionEngine.getModule(id);
+            const status = idx < i ? 'done'
+              : idx === i ? (moduleResult.success ? 'done' : 'failed')
+              : 'pending';
+            return {
+              id,
+              name: mod?.name || id,
+              status,
+              files: mod?.files || []
+            };
+          }),
+          startedAt: decomposition.startedAt || new Date().toISOString(),
+          lastUpdated: new Date().toISOString(),
+          error: moduleResult.success ? null : moduleResult.error
+        });
+
         if (!moduleResult.success) {
           results.success = false;
 
           if (!this.config.continueOnFailure) {
             await this.log(`Stopping build due to module failure: ${moduleId}`, 'error');
+            console.log(chalk.yellow(`\n💡 Resume later with: vibecode agent --resume\n`));
             break;
           }
         }

@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import path from 'path';
 import fs from 'fs-extra';
 
-import { createAgent } from '../agent/index.js';
+import { createAgent, loadProgress } from '../agent/index.js';
 import { printError, printSuccess } from '../ui/output.js';
 import { isClaudeCodeAvailable } from '../providers/index.js';
 
@@ -16,6 +16,14 @@ import { isClaudeCodeAvailable } from '../providers/index.js';
  * vibecode agent "description" [options]
  */
 export async function agentCommand(description, options = {}) {
+  // Handle description as array (from commander variadic)
+  const desc = Array.isArray(description) ? description.join(' ') : description;
+
+  // Handle sub-commands that don't need Claude Code check first
+  if (options.status) {
+    return showAgentStatus(options);
+  }
+
   // Check for Claude Code
   const claudeAvailable = await isClaudeCodeAvailable();
   if (!claudeAvailable) {
@@ -24,8 +32,24 @@ export async function agentCommand(description, options = {}) {
     process.exit(1);
   }
 
-  // Validate description
-  if (!description || description.trim().length < 5) {
+  // Handle resume
+  if (options.resume) {
+    return resumeCommand(options);
+  }
+
+  // Validate description for non-resume commands
+  if (!desc || desc.trim().length < 5) {
+    // Check if there's a session to resume
+    const progress = await loadProgress(process.cwd());
+    if (progress) {
+      console.log(chalk.cyan('\n📦 Found existing session:'));
+      console.log(chalk.white(`   Project: ${progress.projectName}`));
+      console.log(chalk.white(`   Progress: ${progress.completedModules?.length || progress.currentModule}/${progress.totalModules} modules\n`));
+      console.log(chalk.gray('   Resume: vibecode agent --resume'));
+      console.log(chalk.gray('   Status: vibecode agent --status\n'));
+      return;
+    }
+
     printError('Description too short. Please provide more details.');
     console.log(chalk.gray('Example: vibecode agent "SaaS dashboard with auth, billing, and analytics"'));
     process.exit(1);
@@ -33,11 +57,7 @@ export async function agentCommand(description, options = {}) {
 
   // Handle sub-commands
   if (options.analyze) {
-    return analyzeCommand(description, options);
-  }
-
-  if (options.status) {
-    return statusCommand(options);
+    return analyzeCommand(desc, options);
   }
 
   if (options.report) {
@@ -49,7 +69,7 @@ export async function agentCommand(description, options = {}) {
   }
 
   // Main build flow
-  return buildCommand(description, options);
+  return buildCommand(desc, options);
 }
 
 /**
@@ -134,57 +154,131 @@ async function analyzeCommand(description, options) {
 }
 
 /**
- * Show agent status
+ * Show agent status with resume info
  */
-async function statusCommand(options) {
+async function showAgentStatus(options) {
+  const cwd = process.cwd();
+  const progress = await loadProgress(cwd);
+
+  if (!progress) {
+    console.log(chalk.yellow('\n📭 No active agent session.\n'));
+    console.log(chalk.gray('   Start new: vibecode agent "description" --new\n'));
+    return;
+  }
+
+  console.log();
+  console.log(chalk.cyan('╭' + '─'.repeat(68) + '╮'));
+  console.log(chalk.cyan('│') + chalk.bold.white('   🤖 AGENT STATUS') + ' '.repeat(50) + chalk.cyan('│'));
+  console.log(chalk.cyan('│') + ' '.repeat(68) + chalk.cyan('│'));
+
+  const projectLine = `   Project: ${progress.projectName}`;
+  console.log(chalk.cyan('│') + chalk.white(projectLine) + ' '.repeat(Math.max(0, 66 - projectLine.length)) + chalk.cyan('│'));
+
+  const completed = progress.completedModules?.length || progress.currentModule || 0;
+  const progressLine = `   Progress: ${completed}/${progress.totalModules} modules`;
+  console.log(chalk.cyan('│') + chalk.white(progressLine) + ' '.repeat(Math.max(0, 66 - progressLine.length)) + chalk.cyan('│'));
+
+  console.log(chalk.cyan('│') + ' '.repeat(68) + chalk.cyan('│'));
+
+  // Show modules with status
+  for (const mod of progress.modules || []) {
+    let icon, color;
+    switch (mod.status) {
+      case 'done':
+        icon = chalk.green('✓');
+        color = chalk.green;
+        break;
+      case 'building':
+        icon = chalk.yellow('◐');
+        color = chalk.yellow;
+        break;
+      case 'failed':
+        icon = chalk.red('✗');
+        color = chalk.red;
+        break;
+      default:
+        icon = chalk.gray('○');
+        color = chalk.gray;
+    }
+    const modLine = `   ${icon} ${color(mod.name)}`;
+    // Approximate length without ANSI codes
+    const approxLen = 5 + mod.name.length;
+    console.log(chalk.cyan('│') + modLine + ' '.repeat(Math.max(0, 66 - approxLen)) + chalk.cyan('│'));
+  }
+
+  if (progress.error) {
+    console.log(chalk.cyan('│') + ' '.repeat(68) + chalk.cyan('│'));
+    const errorLine = `   Error: ${progress.error.substring(0, 55)}`;
+    console.log(chalk.cyan('│') + chalk.red(errorLine) + ' '.repeat(Math.max(0, 66 - errorLine.length)) + chalk.cyan('│'));
+  }
+
+  console.log(chalk.cyan('│') + ' '.repeat(68) + chalk.cyan('│'));
+
+  const timeLine = `   Last updated: ${new Date(progress.lastUpdated).toLocaleString()}`;
+  console.log(chalk.cyan('│') + chalk.gray(timeLine) + ' '.repeat(Math.max(0, 66 - timeLine.length)) + chalk.cyan('│'));
+
+  console.log(chalk.cyan('│') + ' '.repeat(68) + chalk.cyan('│'));
+  console.log(chalk.cyan('│') + chalk.yellow('   💡 Resume: vibecode agent --resume') + ' '.repeat(29) + chalk.cyan('│'));
+  console.log(chalk.cyan('│') + ' '.repeat(68) + chalk.cyan('│'));
+  console.log(chalk.cyan('╰' + '─'.repeat(68) + '╯'));
+  console.log();
+
+  // Output JSON if requested
+  if (options.json) {
+    console.log(JSON.stringify(progress, null, 2));
+  }
+}
+
+/**
+ * Resume agent from last stopped module
+ */
+async function resumeCommand(options) {
+  const cwd = process.cwd();
+
+  // Check for progress
+  const progress = await loadProgress(cwd);
+  if (!progress) {
+    console.log(chalk.yellow('\n📭 No session to resume.\n'));
+    console.log(chalk.gray('   Start new: vibecode agent "description" --new\n'));
+    return;
+  }
+
+  // Create agent and resume
   const agent = createAgent({
-    projectPath: process.cwd()
+    projectPath: cwd,
+    verbose: options.verbose || false
   });
 
   try {
-    await agent.initialize();
-    const status = agent.getStatus();
+    // Determine from module
+    const fromModule = options.from ? parseInt(options.from) - 1 : undefined;
 
-    console.log();
-    console.log(chalk.cyan('Agent Status'));
-    console.log(chalk.gray('─'.repeat(40)));
-    console.log();
+    const resumeOptions = {
+      maxModuleRetries: options.maxRetries || 3,
+      testAfterEachModule: !options.skipTests,
+      continueOnFailure: options.continue || false,
+      fromModule
+    };
 
-    console.log(`  Initialized:  ${status.initialized ? chalk.green('Yes') : chalk.red('No')}`);
-    console.log(`  Project:      ${status.projectPath}`);
+    const result = await agent.resume(resumeOptions);
 
-    if (status.memoryStats) {
-      console.log();
-      console.log(chalk.cyan('Memory Stats'));
-      console.log(chalk.gray('─'.repeat(40)));
-      console.log(`  Modules:      ${status.memoryStats.modulesCompleted}/${status.memoryStats.modulesTotal} completed`);
-      console.log(`  Decisions:    ${status.memoryStats.decisionsCount}`);
-      console.log(`  Patterns:     ${status.memoryStats.patternsCount}`);
-      console.log(`  Errors:       ${status.memoryStats.errorsFixed}/${status.memoryStats.errorsTotal} fixed`);
-      console.log(`  Files:        ${status.memoryStats.filesCreated}`);
-    }
-
-    if (status.healingStats) {
-      console.log();
-      console.log(chalk.cyan('Self-Healing Stats'));
-      console.log(chalk.gray('─'.repeat(40)));
-      console.log(`  Attempts:     ${status.healingStats.total}`);
-      console.log(`  Success:      ${status.healingStats.successful}`);
-      console.log(`  Failed:       ${status.healingStats.failed}`);
-      console.log(`  Rate:         ${status.healingStats.successRate}`);
-    }
-
-    console.log();
-
-    // Output JSON if requested
-    if (options.json) {
-      console.log(JSON.stringify(status, null, 2));
+    // Exit with appropriate code
+    if (result && !result.success) {
+      process.exit(1);
     }
 
   } catch (error) {
-    printError(`Status failed: ${error.message}`);
+    printError(`Resume failed: ${error.message}`);
+    console.log(chalk.gray('Check .vibecode/agent/orchestrator.log for details.'));
     process.exit(1);
   }
+}
+
+/**
+ * Legacy status command (for compatibility)
+ */
+async function statusCommand(options) {
+  return showAgentStatus(options);
 }
 
 /**
