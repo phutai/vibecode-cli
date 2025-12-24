@@ -1,6 +1,6 @@
 {
   "name": "@nclamvn/vibecode-cli",
-  "version": "2.6.0",
+  "version": "3.0.0",
   "description": "Build software with discipline - AI coding with guardrails",
   "main": "src/index.js",
   "type": "module",
