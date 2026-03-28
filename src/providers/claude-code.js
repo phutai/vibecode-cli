@@ -14,6 +14,7 @@ import { pathExists, appendToFile } from '../utils/files.js';
 export const CLAUDE_CODE_CONFIG = {
   command: 'claude',
   flags: [
+    '--model qwen3.5-35b',
     '--dangerously-skip-permissions',  // Trust the AI - Contract đã locked
     '--print',                          // Non-interactive mode (no TTY required)
   ],
